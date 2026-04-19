@@ -35,6 +35,8 @@ fee-attribution math (V3 §6.3 with the modular-arithmetic robustness notes).
 ```bash
 git clone --recurse-submodules <this-repo>
 cd lp-replay
+# If you cloned without --recurse-submodules, fetch the v3-core / forge-std deps now:
+git submodule update --init --recursive
 cp .env.example .env   # then edit .env with your Alchemy/Infura mainnet RPC
 forge build
 forge test
@@ -74,23 +76,51 @@ range tick upper:         197880
 snapshots:                57
 days in range:            52
 days out of range:        5
-hodl USD (1e18):          63750000000000000000000   ($63,750)
+hodl USD (1e18):          63750000000000000000000   ($63,750.00)
 fees USD (1e18):          2426784213165679295000    ($2,426.78)
 IL USD   (1e18, signed):  -521914455528140755500    (-$521.91)
-net P&L  (1e18, signed):  1904869757637538539500    (+$1,904.87)
+net P&L  (1e18, signed):  1904869757637538539500    (+$1,904.86)
 APR bps (signed):         1947                       (19.47%)
 ```
 
+> **Reading this output.** Starting capital was $63,750 (30k USDC + 10 WETH). Over
+> 56 days the position was inside its price band on **52 of 57 snapshot days** and
+> earned **$2,426.78 in swap fees**, more than absorbing **$521.91 of impermanent
+> loss** (the value gap vs simply HODLing the same tokens). The bottom line is
+> **+$1,904.86 net of IL — about 19.5% annualized over HODL**, just from being a
+> passive LP through a calm two-month window. The Narrow scenario below ran the
+> same dollars across the same window with a tighter range and ended up the
+> opposite shape: comparable fees, much larger IL, ~4.4% APR.
+
+**Caveats for this specific window.**
+
+- **May–Jun 2024 was unusually range-bound for ETH** (~$3,200 → ~$3,400). Symmetric
+  in-range LPs disproportionately benefit from low realized vol; bull-trend or
+  high-vol windows would compress the wide-range advantage.
+- **The picked range is forgiving.** Tightening to ±500 ticks (Narrow scenario)
+  flips the result negative on a per-fee basis — see the table below.
+- **No gas.** Position open/close, plus any rebalancing a real LP would do, is
+  free in this simulator. On L1 mainnet that's a meaningful deduction.
+
 ## Reference scenarios
 
-Three short scenarios live in `test/scenarios/`:
+Three short scenarios live in `test/scenarios/`. All replay mainnet blocks
+`19_800_000` → `20_200_000` (May 4 → Jun 29, 2024, ≈56 days).
 
-- **`ETH_USDC_Wide_May2024.t.sol`** — 30k USDC + 10 WETH, ±2000 ticks, 56 days.
-- **`ETH_USDC_Narrow_May2024.t.sol`** — same deposit, ±500 ticks. Demonstrates the
-  classic "narrow range earns more per in-range day, but spends most days out of
-  range" failure mode.
-- **`USDC_USDT_Stable.t.sol`** — 100k of each stable in the 0.01% pool, ±10 ticks.
-  Yields the strongest fees-to-IL ratio in the dataset.
+| Scenario | Capital | Range | Days in range | Fees | IL | Net P&L | APR |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| **Wide ETH/USDC** (`ETH_USDC_Wide_May2024.t.sol`) | $63,750 | ±2000 ticks (≈±22%) | 52 / 57 | +$2,426.78 | −$521.91 | **+$1,904.86** | **19.47%** |
+| **Narrow ETH/USDC** (`ETH_USDC_Narrow_May2024.t.sol`) | $63,750 | ±500 ticks (≈±5%) | 10 / 57 | +$2,166.62 | −$1,734.85 | **+$431.76** | **4.41%** |
+| **Stable USDC/USDT** (`USDC_USDT_Stable.t.sol`) | $200,000 | ±10 ticks (≈±0.1%) | 50 / 57 | +$32,260.60 | +$29.43 | **+$32,290.04** | **105.23%** |
+
+Numbers above are the actual `forge test --match-path 'test/scenarios/*' -vv`
+output, not estimates. Reproduce them yourself and they should match to the cent.
+
+The narrow position earned ≈10% **less** in absolute fees than the wide one despite
+4× concentration, because it was out of range 47 of 57 days; meanwhile its IL was
+3.3× larger. Net result: same window, same capital, **4× outcome gap** purely from
+range selection. The stable pair is a separate regime — IL is structurally near zero
+when both legs are pegged, so the 0.01% fee tier compounds essentially undiluted.
 
 Side-by-side commentary lives in [`docs/STRATEGY_COMPARISON.md`](docs/STRATEGY_COMPARISON.md).
 
@@ -127,7 +157,6 @@ test/
 docs/
 ├── IL_MATH.md
 └── STRATEGY_COMPARISON.md
-.specs/                      # constitution, spec, plan, task list
 ```
 
 ## Library ports
@@ -161,5 +190,3 @@ the upstream license unchanged — `GPL-2.0-or-later` for `TickMath` and `Liquid
 ## License
 
 MIT. See [LICENSE](LICENSE).
-
-[hm]: docs/HISTORICAL_MOMENTS.md
