@@ -1,0 +1,78 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.24;
+
+/// @title 512-bit multiply-divide, Solidity 0.8.x compatible
+/// @notice Direct adaptation of Uniswap v3-core's `FullMath` for Solidity ^0.8.
+/// @dev Upstream uses `-denominator` on a uint, which 0.8.x rejects. The body below is
+///      wrapped in `unchecked` and the unary negation is replaced with `(0 - denominator)`,
+///      matching the semantics of the original (two's complement wrap).
+///      Credit to Remco Bloemen under MIT license https://xn--2-umb.com/21/muldiv.
+library FullMath {
+    /// @notice floor(a * b / denominator) with full 512-bit intermediate precision.
+    ///         Reverts on result overflow or when denominator == 0.
+    function mulDiv(uint256 a, uint256 b, uint256 denominator) internal pure returns (uint256 result) {
+        unchecked {
+            uint256 prod0;
+            uint256 prod1;
+            assembly {
+                let mm := mulmod(a, b, not(0))
+                prod0 := mul(a, b)
+                prod1 := sub(sub(mm, prod0), lt(mm, prod0))
+            }
+
+            if (prod1 == 0) {
+                require(denominator > 0);
+                assembly {
+                    result := div(prod0, denominator)
+                }
+                return result;
+            }
+
+            require(denominator > prod1);
+
+            uint256 remainder;
+            assembly {
+                remainder := mulmod(a, b, denominator)
+            }
+            assembly {
+                prod1 := sub(prod1, gt(remainder, prod0))
+                prod0 := sub(prod0, remainder)
+            }
+
+            uint256 twos = (0 - denominator) & denominator;
+            assembly {
+                denominator := div(denominator, twos)
+            }
+
+            assembly {
+                prod0 := div(prod0, twos)
+            }
+            assembly {
+                twos := add(div(sub(0, twos), twos), 1)
+            }
+            prod0 |= prod1 * twos;
+
+            uint256 inv = (3 * denominator) ^ 2;
+            inv *= 2 - denominator * inv;
+            inv *= 2 - denominator * inv;
+            inv *= 2 - denominator * inv;
+            inv *= 2 - denominator * inv;
+            inv *= 2 - denominator * inv;
+            inv *= 2 - denominator * inv;
+
+            result = prod0 * inv;
+            return result;
+        }
+    }
+
+    /// @notice ceil(a * b / denominator).
+    function mulDivRoundingUp(uint256 a, uint256 b, uint256 denominator) internal pure returns (uint256 result) {
+        result = mulDiv(a, b, denominator);
+        if (mulmod(a, b, denominator) > 0) {
+            require(result < type(uint256).max);
+            unchecked {
+                result++;
+            }
+        }
+    }
+}
